@@ -1,0 +1,25 @@
+# Root-level folders to exclude
+/Celeb-DF-v2/
+/LA/
+/fiftyone/
+/ai_generated/
+/venv/
+
+# Backend folders to exclude
+/backend/raw/
+/backend/dataset_512/
+/backend/audio/
+/backend/youtube_audio/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Secrets
+.env
+.env.*
+
+# macOS
+.DS_Store
+/backend/data/

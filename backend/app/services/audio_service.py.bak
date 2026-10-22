@@ -1,0 +1,184 @@
+"""Audio deepfake (voice spoof) detection pipeline."""
+from __future__ import annotations
+
+import base64
+import io
+import time
+
+import matplotlib
+
+matplotlib.use("Agg")  # headless backend, no display needed on the server
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+from app.core.config import settings
+from app.services import model_registry
+from app.utils.audio_features import audio_pipeline
+from app.utils.exceptions import CorruptedFileError
+
+
+def _plot_to_base64_png(fig) -> str:
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=110)
+    plt.close(fig)
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode("utf-8")
+
+
+def _waveform_plot(waveform: np.ndarray, sr: int) -> str:
+    fig, ax = plt.subplots(figsize=(8, 2.2))
+    t = np.linspace(0, len(waveform) / sr, num=len(waveform))
+    ax.plot(t, waveform, linewidth=0.6, color="#22d3ee")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude")
+    ax.set_facecolor("#0f172a")
+    fig.patch.set_facecolor("#0f172a")
+    ax.tick_params(colors="white")
+    ax.xaxis.label.set_color("white")
+    ax.yaxis.label.set_color("white")
+    for spine in ax.spines.values():
+        spine.set_color("#334155")
+    return _plot_to_base64_png(fig)
+
+
+def _spectrogram_plot(log_mel: np.ndarray, sr: int) -> str:
+    fig, ax = plt.subplots(figsize=(8, 3))
+    img = ax.imshow(log_mel, aspect="auto", origin="lower", cmap="magma")
+    ax.set_xlabel("Time frames")
+    ax.set_ylabel("Mel bins")
+    fig.colorbar(img, ax=ax, format="%.1f")
+    fig.patch.set_facecolor("#0f172a")
+    ax.set_facecolor("#0f172a")
+    ax.tick_params(colors="white")
+    ax.xaxis.label.set_color("white")
+    ax.yaxis.label.set_color("white")
+    return _plot_to_base64_png(fig)
+
+
+def analyze_audio(file_bytes: bytes, filename: str) -> dict:
+    start = time.perf_counter()
+
+    try:
+        raw_waveform, log_mel, spec_tensor = audio_pipeline(file_bytes)
+    except Exception as exc:
+        raise CorruptedFileError(filename, f"could not decode audio ({exc})") from exc
+
+    if raw_waveform.size == 0:
+        raise CorruptedFileError(filename, "decoded audio is empty")
+
+    # ---------------------------------------------------------
+    # 1. Existing CNN spectrogram model
+    # ---------------------------------------------------------
+    spec_tensor = spec_tensor.to(settings.DEVICE)
+    cnn_model = model_registry.audio_model
+
+    with torch.no_grad():
+        logits = cnn_model(spec_tensor)
+        cnn_probs = F.softmax(logits, dim=1).squeeze(0).cpu().numpy()
+
+    cnn_real_prob = float(cnn_probs[0])
+    cnn_fake_prob = float(cnn_probs[1])
+    cnn_label = (
+        "FAKE"
+        if cnn_fake_prob >= settings.FAKE_THRESHOLD
+        else "REAL"
+    )
+
+    # ---------------------------------------------------------
+    # 2. Acoustic feature classifier
+    # ---------------------------------------------------------
+    acoustic_model = model_registry.audio_acoustic_model
+
+    if acoustic_model is None:
+        raise RuntimeError(
+            "Acoustic classifier is not loaded. Ensure "
+            "backend/weights/audio_acoustic_rf.joblib exists "
+            "and restart the backend."
+        )
+
+    try:
+        from app.utils.acoustic_features import extract_acoustic_features
+
+        features = extract_acoustic_features(file_bytes)
+        feature_columns = acoustic_model["feature_columns"]
+        feature_frame = __import__("pandas").DataFrame(
+            [{column: features.get(column, float("nan"))
+              for column in feature_columns}],
+            columns=feature_columns,
+        )
+
+        acoustic_probs = acoustic_model["model"].predict_proba(
+            feature_frame
+        )[0]
+
+        classes = list(
+            acoustic_model["model"].named_steps["classifier"].classes_
+        )
+        fake_index = classes.index(1)
+        acoustic_fake_prob = float(acoustic_probs[fake_index])
+
+        acoustic_label = (
+            "FAKE"
+            if acoustic_fake_prob >= settings.FAKE_THRESHOLD
+            else "REAL"
+        )
+
+    except Exception as exc:
+        raise RuntimeError(
+            f"Acoustic model inference failed: {exc}"
+        ) from exc
+
+    # ---------------------------------------------------------
+    # 3. Conservative initial hybrid decision
+    # ---------------------------------------------------------
+    # The acoustic classifier currently has low REAL recall.
+    # Give the existing CNN primary weight until independent
+    # calibration demonstrates that stronger acoustic weighting
+    # improves performance.
+    hybrid_fake_prob = (
+        0.80 * cnn_fake_prob
+        + 0.20 * acoustic_fake_prob
+    )
+
+    label = (
+        "FAKE"
+        if hybrid_fake_prob >= settings.FAKE_THRESHOLD
+        else "REAL"
+    )
+    confidence = (
+        hybrid_fake_prob
+        if label == "FAKE"
+        else 1.0 - hybrid_fake_prob
+    )
+
+    duration_sec = len(raw_waveform) / settings.AUDIO_SAMPLE_RATE
+    waveform_b64 = _waveform_plot(raw_waveform, settings.AUDIO_SAMPLE_RATE)
+    spectrogram_b64 = _spectrogram_plot(log_mel, settings.AUDIO_SAMPLE_RATE)
+
+    elapsed_ms = (time.perf_counter() - start) * 1000
+
+    print(
+        f"[AUDIO HYBRID] file={filename}, "
+        f"cnn_fake={cnn_fake_prob:.4f}, "
+        f"acoustic_fake={acoustic_fake_prob:.4f}, "
+        f"hybrid_fake={hybrid_fake_prob:.4f}, "
+        f"label={label}"
+    )
+
+    return {
+        "label": label,
+        "confidence": round(confidence, 4),
+        "fake_probability": round(hybrid_fake_prob, 4),
+        "real_probability": round(1.0 - hybrid_fake_prob, 4),
+        "processing_time_ms": round(elapsed_ms, 2),
+        "duration_sec": round(duration_sec, 2),
+        "waveform_base64": waveform_b64,
+        "spectrogram_base64": spectrogram_b64,
+        "cnn_label": cnn_label,
+        "cnn_fake_probability": round(cnn_fake_prob, 4),
+        "acoustic_label": acoustic_label,
+        "acoustic_fake_probability": round(acoustic_fake_prob, 4),
+        "hybrid_prediction": True,
+    }

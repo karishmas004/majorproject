@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    container_name: deepfake-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/weights:/app/weights
+      - ./backend/assets:/app/assets
+    environment:
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:80
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: deepfake-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
