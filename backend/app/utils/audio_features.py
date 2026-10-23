@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import subprocess
 
 import librosa
 import numpy as np
@@ -10,14 +11,65 @@ import torch
 from app.core.config import settings
 
 
+def decode_audio_ffmpeg(file_bytes: bytes) -> np.ndarray:
+    """
+    Decode supported audio formats in memory using FFmpeg.
+    No intermediate audio files are created.
+    Returns mono float32 audio at the configured sample rate.
+    """
+    if not file_bytes:
+        raise ValueError("Uploaded audio file is empty.")
+
+    command = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-nostdin",
+        "-i", "pipe:0",
+        "-map", "0:a:0",
+        "-vn",
+        "-ac", "1",
+        "-ar", str(settings.AUDIO_SAMPLE_RATE),
+        "-f", "f32le",
+        "-acodec", "pcm_f32le",
+        "pipe:1",
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            input=file_bytes,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=60,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "FFmpeg was not found. Install it and ensure it is on the backend PATH."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("Audio decoding timed out.") from exc
+
+    if result.returncode != 0:
+        details = result.stderr.decode("utf-8", errors="replace").strip()
+        raise ValueError(f"FFmpeg could not decode this audio: {details[-1000:]}")
+
+    waveform = np.frombuffer(result.stdout, dtype="<f4").copy()
+
+    if waveform.size == 0:
+        raise ValueError("FFmpeg produced no audio samples.")
+
+    waveform = np.nan_to_num(waveform, copy=False).astype(np.float32, copy=False)
+    return waveform
+
+
 def load_audio_any_format(file_bytes: bytes) -> np.ndarray:
     """
-    Decode wav/mp3/flac/m4a bytes into a mono waveform at the configured
-    sample rate. librosa + soundfile/audioread handle format detection.
+    Decode audio formats supported by FFmpeg into a mono waveform
+    at the configured sample rate, entirely in memory.
     """
-    buf = io.BytesIO(file_bytes)
-    waveform, _ = librosa.load(buf, sr=settings.AUDIO_SAMPLE_RATE, mono=True)
-    return waveform
+    return decode_audio_ffmpeg(file_bytes)
 
 
 def fix_length(waveform: np.ndarray, sr: int, duration_sec: float) -> np.ndarray:

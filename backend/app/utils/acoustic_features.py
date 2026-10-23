@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import io
-
 import librosa
 import numpy as np
-import soundfile as sf
+
+from app.core.config import settings
+from app.utils.audio_features import decode_audio_ffmpeg
 
 
 SAMPLE_RATE = 16000
@@ -19,19 +19,8 @@ def extract_acoustic_features(
     """Extract stable, interpretable acoustic measurements from audio."""
 
     try:
-        waveform, sr = sf.read(
-            io.BytesIO(audio_bytes),
-            dtype="float32",
-            always_2d=False,
-        )
-
-        if waveform.ndim == 2:
-            waveform = waveform.mean(axis=1)
-
-        if waveform.size == 0:
-            raise ValueError("Audio is empty.")
-
-        waveform = np.nan_to_num(waveform)
+        waveform = decode_audio_ffmpeg(audio_bytes)
+        sr = settings.AUDIO_SAMPLE_RATE
 
         if sr != sample_rate:
             waveform = librosa.resample(
@@ -40,6 +29,11 @@ def extract_acoustic_features(
                 target_sr=sample_rate,
             )
             sr = sample_rate
+
+        if waveform.size == 0:
+            raise ValueError("Audio is empty.")
+
+        waveform = np.nan_to_num(waveform)
 
         if len(waveform) < int(0.25 * sr):
             raise ValueError("Audio must contain at least 0.25 seconds.")

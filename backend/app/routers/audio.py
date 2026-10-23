@@ -17,7 +17,7 @@ async def detect_audio(
     file: UploadFile = File(
         ...,
         description=(
-            "Audio formats: WAV, MP3, FLAC, M4A, OPUS, AAC, OGG, WMA, "
+            "Audio formats: WAV, MP3, MPEG, FLAC, M4A, OPUS, AAC, OGG, WMA, "
             "AIFF, AIF, AMR, CAF, WebM, MP4, MP2, AU"
         ),
     )
