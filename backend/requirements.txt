@@ -1,23 +1,58 @@
+# ==========================================
+# Backend API
+# ==========================================
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-multipart==0.0.20
 pydantic==2.10.4
+python-dotenv==1.0.1
 
+# ==========================================
+# Deep Learning - PyTorch
+# ==========================================
 torch==2.5.1
 torchvision==0.20.1
+torchaudio==2.5.1
 
+# ==========================================
+# Hugging Face Transformers / Wav2Vec2
+# ==========================================
+transformers==4.46.3
+tokenizers==0.20.3
+safetensors==0.4.5
+huggingface-hub==0.26.2
+
+# ==========================================
+# Image Processing
+# ==========================================
+Pillow==11.0.0
 opencv-python==4.10.0.84
-numpy==1.26.4
-pandas==2.2.3
-scikit-learn==1.5.2
+imageio==2.36.1
 
+# ==========================================
+# Audio Processing
+# ==========================================
 librosa==0.10.2.post1
 soundfile==0.12.1
 audioread==3.0.1
-
-moviepy==2.1.2
+scipy==1.14.1
 imageio-ffmpeg==0.5.1
 
-matplotlib==3.9.3
+# ==========================================
+# Video Processing
+# ==========================================
+moviepy==2.1.2
 
-python-dotenv==1.0.1
+# ==========================================
+# Machine Learning and Data Processing
+# ==========================================
+numpy==1.26.4
+pandas==2.2.3
+scikit-learn==1.5.2
+joblib==1.4.2
+
+# ==========================================
+# Utilities
+# ==========================================
+matplotlib==3.9.3
+tqdm==4.67.1
