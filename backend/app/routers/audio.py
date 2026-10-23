@@ -13,7 +13,15 @@ router = APIRouter(prefix="/api/audio", tags=["Audio Detection"])
     response_model=AudioDetectionResponse,
     summary="Detect whether an uploaded audio clip is a voice deepfake",
 )
-async def detect_audio(file: UploadFile = File(..., description="wav, mp3, flac, or m4a")):
+async def detect_audio(
+    file: UploadFile = File(
+        ...,
+        description=(
+            "Audio formats: WAV, MP3, FLAC, M4A, OPUS, AAC, OGG, WMA, "
+            "AIFF, AIF, AMR, CAF, WebM, MP4, MP2, AU"
+        ),
+    )
+):
     """
     Upload an audio clip. Returns REAL/FAKE label, confidence, a
     waveform plot, and a log-mel spectrogram plot.

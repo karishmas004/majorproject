@@ -52,7 +52,11 @@ class Settings:
 
     ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
     ALLOWED_VIDEO_EXT = {".mp4", ".avi", ".mov", ".mkv"}
-    ALLOWED_AUDIO_EXT = {".wav", ".mp3", ".flac", ".m4a", ".opus"}
+    ALLOWED_AUDIO_EXT = {
+        ".wav", ".mp3", ".flac", ".m4a", ".opus",
+        ".aac", ".ogg", ".wma", ".aiff", ".aif",
+        ".amr", ".caf", ".webm", ".mp4", ".mp2", ".au",
+    }
 
     # ---- CORS ------------------------------------------------------------
     CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")

@@ -30,9 +30,9 @@ export default function AudioDetection() {
     <div className="grid gap-6 lg:grid-cols-2">
       <div className="space-y-4">
         <UploadDropzone
-          accept=".wav,.mp3,.flac,.m4a,.opus"
+          accept=".wav,.mp3,.flac,.m4a,.opus,.aac,.ogg,.wma,.aiff,.aif,.amr,.caf,.webm,.mp4,.mp2,.au"
           label="Drop an audio clip, or click to browse"
-          hint="WAV, MP3, FLAC, M4A, OPUS · up to 30MB"
+          hint="WAV, MP3, FLAC, M4A, OPUS, AAC, OGG, WMA, AIFF, AMR, CAF, WebM, MP4, MP2, AU · up to 30MB"
           onFileSelected={handleFile}
           disabled={loading}
         />
